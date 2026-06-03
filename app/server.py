@@ -3,7 +3,6 @@ import os
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-
 VERSION = "stable-health-v1"
 
 
@@ -16,7 +15,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                     "status": "ok",
                     "mode": "stable-health-only",
                     "version": VERSION,
-                    "message": "DataSight DSRI practice deployment is running.",
+                    "message": "DataSight DSRI practice deployment is indeed running.",
                 },
             )
             return
