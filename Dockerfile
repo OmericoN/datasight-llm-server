@@ -1,4 +1,4 @@
-FROM vllm/vllm-openai:latest
+FROM python:3.12-slim
 
 WORKDIR /app
 
