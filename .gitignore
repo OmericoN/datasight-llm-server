@@ -1,22 +1,10 @@
-# Environment variables / secrets
 .env
 .env.*
 !.env.example
 
-# Python cache, just in case you add FastAPI later
 __pycache__/
-*.py[cod]
-*$py.class
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
+*.pyc
 
-# Virtual environments
-.venv/
-venv/
-env/
-
-# Hugging Face / model cache
 .cache/
 huggingface/
 models/
@@ -26,16 +14,7 @@ models/
 *.pth
 *.gguf
 
-# Logs
-*.log
-logs/
-
-# OS/editor files
-.DS_Store
-Thumbs.db
-.idea/
 .zed/
+.idea/
 .vscode/
-
-# Docker/local build artifacts
-docker-compose.override.yml
+.DS_Store

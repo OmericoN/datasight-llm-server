@@ -1,5 +1,12 @@
 FROM vllm/vllm-openai:latest
 
+WORKDIR /app
+
+COPY entrypoint.sh /entrypoint.sh
+COPY app ./app
+
+RUN chmod +x /entrypoint.sh
+
 EXPOSE 8000
 
-CMD ["--host", "0.0.0.0", "--port", "8000", "--model", "Qwen/Qwen2.5-0.5B-Instruct"]
+ENTRYPOINT ["/entrypoint.sh"]
