@@ -1,10 +1,22 @@
+# Environment variables / secrets
 .env
 .env.*
 !.env.example
 
+# Python cache
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Hugging Face / model cache
 .cache/
 huggingface/
 models/
@@ -14,7 +26,16 @@ models/
 *.pth
 *.gguf
 
+# Logs
+*.log
+logs/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
 .zed/
 .idea/
 .vscode/
-.DS_Store
+
+# Docker/local build artifacts
+docker-compose.override.yml

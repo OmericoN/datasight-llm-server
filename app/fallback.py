@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 app = FastAPI(title="DataSight LLM Server Fallback")
 
@@ -11,7 +11,7 @@ class ChatMessage(BaseModel):
 
 class ChatCompletionRequest(BaseModel):
     model: str = "datasight-fallback"
-    messages: list[ChatMessage] = []
+    messages: list[ChatMessage] = Field(default_factory=list)
 
 
 @app.get("/")
@@ -19,6 +19,7 @@ def root():
     return {
         "status": "ok",
         "mode": "fallback",
+        "version": "fallback-v1",
         "message": "DataSight DSRI server is running, but CUDA/GPU is not available.",
     }
 
@@ -28,6 +29,7 @@ def health():
     return {
         "status": "ok",
         "mode": "fallback",
+        "version": "fallback-v1",
         "message": "Health check passed. No model is currently running.",
     }
 
