@@ -10,8 +10,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     service_version: str = "fastapi-gateway-v1"
     llm_backend_url: str = ""
-    llm_model: str = "Qwen/Qwen2.5-0.5B-Instruct"
+    llm_model: str = "Qwen/Qwen2.5-32B-Instruct-AWQ"
     llm_request_timeout_seconds: float = Field(default=180, gt=0)
+    llm_status_timeout_seconds: float = Field(default=2.0, gt=0)
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -44,7 +45,10 @@ def backend_unavailable() -> HTTPException:
         status_code=503,
         detail={
             "error": {
-                "message": "LLM backend is not configured or unavailable.",
+                "message": (
+                    "GPU model service is not configured or unavailable. "
+                    "Please try again during a booked DSRI GPU slot."
+                ),
                 "type": "backend_unavailable",
                 "code": "llm_backend_unavailable",
             },
@@ -52,6 +56,46 @@ def backend_unavailable() -> HTTPException:
             "version": settings.service_version,
         },
     )
+
+
+async def gpu_status_payload() -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "gpu_available": False,
+        "backend_configured": settings.backend_configured,
+        "mode": "cpu-gateway",
+        "version": settings.service_version,
+        "llm_model": settings.llm_model,
+    }
+
+    if not settings.backend_configured:
+        payload["message"] = (
+            "No GPU model service is configured for this DSRI app. "
+            "Book GPU time and set LLM_BACKEND_URL to the internal vLLM service."
+        )
+        return payload
+
+    health_url = f"{settings.normalized_backend_url}/health"
+    try:
+        async with httpx.AsyncClient(
+            timeout=settings.llm_status_timeout_seconds
+        ) as client:
+            response = await client.get(health_url)
+    except httpx.HTTPError:
+        payload["message"] = (
+            "GPU model service is configured but not currently reachable."
+        )
+        return payload
+
+    payload["backend_status_code"] = response.status_code
+    if 200 <= response.status_code < 300:
+        payload["gpu_available"] = True
+        payload["message"] = "GPU model service is available."
+        return payload
+
+    payload["message"] = (
+        "GPU model service is configured but did not report healthy status."
+    )
+    return payload
 
 
 async def proxy_to_backend(path: str, method: str, request: Request) -> Response:
@@ -113,6 +157,11 @@ async def health() -> dict[str, Any]:
 @app.get("/ready")
 async def ready() -> dict[str, Any]:
     return service_metadata()
+
+
+@app.get("/gpu-status")
+async def gpu_status() -> dict[str, Any]:
+    return await gpu_status_payload()
 
 
 @app.get("/v1/models", response_model=None)
