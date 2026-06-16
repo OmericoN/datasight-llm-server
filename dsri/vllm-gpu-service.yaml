@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: datasight-vllm-gpu
+  labels:
+    app: datasight-vllm-gpu
+spec:
+  selector:
+    app: datasight-vllm-gpu
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
