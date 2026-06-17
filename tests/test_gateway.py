@@ -12,6 +12,7 @@ class GatewayWithoutBackendTests(unittest.TestCase):
     def reload_gateway(self, **env: str) -> None:
         for key in (
             "LLM_BACKEND_URL",
+            "API_KEY",
             "API_KEYS",
             "RATE_LIMIT_REQUESTS_PER_MINUTE",
             "RATE_LIMIT_WINDOW_SECONDS",
@@ -78,7 +79,7 @@ class GatewayWithoutBackendTests(unittest.TestCase):
         self.assertIn("booked DSRI GPU slot", body["detail"]["error"]["message"])
 
     def test_chat_requires_api_key_when_configured(self) -> None:
-        self.reload_gateway(API_KEYS="secret-key")
+        self.reload_gateway(API_KEY="secret-key")
 
         response = self.client.post(
             "/v1/chat/completions",
@@ -95,7 +96,7 @@ class GatewayWithoutBackendTests(unittest.TestCase):
         )
 
     def test_chat_accepts_api_key_query_argument(self) -> None:
-        self.reload_gateway(API_KEYS="secret-key")
+        self.reload_gateway(API_KEY="secret-key")
 
         response = self.client.post(
             "/v1/chat/completions?api_key=secret-key",
@@ -113,7 +114,7 @@ class GatewayWithoutBackendTests(unittest.TestCase):
 
     def test_models_are_rate_limited_by_api_key(self) -> None:
         self.reload_gateway(
-            API_KEYS="secret-key",
+            API_KEY="secret-key",
             RATE_LIMIT_REQUESTS_PER_MINUTE="1",
             RATE_LIMIT_WINDOW_SECONDS="60",
         )
@@ -130,7 +131,7 @@ class GatewayWithoutBackendTests(unittest.TestCase):
         )
 
     def test_usage_endpoint_requires_api_key_when_configured(self) -> None:
-        self.reload_gateway(API_KEYS="secret-key")
+        self.reload_gateway(API_KEY="secret-key")
 
         missing_key = self.client.get("/usage")
         with_key = self.client.get("/usage", headers={"x-api-key": "secret-key"})
@@ -141,6 +142,15 @@ class GatewayWithoutBackendTests(unittest.TestCase):
         self.assertTrue(body["auth_required"])
         self.assertIn("limits", body)
         self.assertIn("totals", body)
+
+    def test_legacy_api_keys_uses_only_first_key(self) -> None:
+        self.reload_gateway(API_KEYS="first-key,second-key")
+
+        second_key = self.client.get("/usage", headers={"x-api-key": "second-key"})
+        first_key = self.client.get("/usage", headers={"x-api-key": "first-key"})
+
+        self.assertEqual(second_key.status_code, 401)
+        self.assertEqual(first_key.status_code, 200)
 
     def test_chat_rejects_excessive_max_tokens(self) -> None:
         self.reload_gateway(MAX_COMPLETION_TOKENS="10")

@@ -32,8 +32,8 @@ LLM_BACKEND_API_KEY=
 LLM_MODEL=Qwen/Qwen2.5-32B-Instruct-AWQ
 LLM_REQUEST_TIMEOUT_SECONDS=180
 LLM_STATUS_TIMEOUT_SECONDS=2.0
-API_KEYS=
-RATE_LIMIT_REQUESTS_PER_MINUTE=30
+API_KEY=
+RATE_LIMIT_REQUESTS_PER_MINUTE=300
 RATE_LIMIT_WINDOW_SECONDS=60
 MAX_REQUEST_BODY_BYTES=1000000
 MAX_MESSAGES_PER_REQUEST=50
@@ -52,13 +52,13 @@ DataSight should keep calling the stable DSRI gateway route. If the GPU backend 
 
 ## API Keys and Limits
 
-Set `API_KEYS` to a comma-separated list to protect expensive and monitoring endpoints:
+Set `API_KEY` to one generated secret to protect expensive and monitoring endpoints:
 
 ```text
-API_KEYS=<secret-1>,<secret-2>
+API_KEY=<secret>
 ```
 
-When `API_KEYS` is set, clients must send one of:
+When `API_KEY` is set, clients must send it with one of:
 
 ```text
 Authorization: Bearer <secret>
@@ -86,10 +86,10 @@ GET /ready
 GET /gpu-status
 ```
 
-Rate limits and request caps are enforced in the gateway before proxying to vLLM:
+Rate limits and request caps are enforced in the gateway before proxying to vLLM. The default request limit is intentionally loose for internal UM VPN usage:
 
 ```text
-RATE_LIMIT_REQUESTS_PER_MINUTE=30
+RATE_LIMIT_REQUESTS_PER_MINUTE=300
 RATE_LIMIT_WINDOW_SECONDS=60
 MAX_REQUEST_BODY_BYTES=1000000
 MAX_MESSAGES_PER_REQUEST=50
@@ -164,7 +164,7 @@ Expected response includes:
   "status": "ok",
   "auth_required": true,
   "limits": {
-    "rate_limit_requests_per_minute": 30,
+    "rate_limit_requests_per_minute": 300,
     "max_completion_tokens": 2048
   },
   "totals": {}

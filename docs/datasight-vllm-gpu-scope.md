@@ -311,7 +311,7 @@ Before scaling GPU to `1`:
 - The `datasight-vllm-gpu` Service exists on port `8000`.
 - No public Route exists for `datasight-vllm-gpu`.
 - The CPU gateway has `LLM_BACKEND_URL=http://datasight-vllm-gpu:8000`.
-- The CPU gateway has `API_KEYS` configured for public use.
+- The CPU gateway has `API_KEY` configured for public use.
 
 During a booked GPU window:
 

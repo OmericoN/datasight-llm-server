@@ -20,8 +20,9 @@ class Settings(BaseSettings):
     llm_model: str = "Qwen/Qwen2.5-32B-Instruct-AWQ"
     llm_request_timeout_seconds: float = Field(default=180, gt=0)
     llm_status_timeout_seconds: float = Field(default=2.0, gt=0)
+    api_key: str = ""
     api_keys: str = ""
-    rate_limit_requests_per_minute: int = Field(default=30, gt=0)
+    rate_limit_requests_per_minute: int = Field(default=300, gt=0)
     rate_limit_window_seconds: int = Field(default=60, gt=0)
     max_request_body_bytes: int = Field(default=1_000_000, gt=0)
     max_messages_per_request: int = Field(default=50, gt=0)
@@ -39,14 +40,16 @@ class Settings(BaseSettings):
         return bool(self.normalized_backend_url)
 
     @property
-    def configured_api_keys(self) -> tuple[str, ...]:
-        return tuple(
-            key.strip() for key in self.api_keys.split(",") if key.strip()
-        )
+    def configured_api_key(self) -> str:
+        if self.api_key.strip():
+            return self.api_key.strip()
+
+        legacy_keys = (key.strip() for key in self.api_keys.split(","))
+        return next((key for key in legacy_keys if key), "")
 
     @property
     def auth_required(self) -> bool:
-        return bool(self.configured_api_keys)
+        return bool(self.configured_api_key)
 
 
 settings = Settings()
@@ -189,9 +192,9 @@ def client_label(request: Request, api_key: str = "") -> str:
 
 def authenticate_request(request: Request) -> str:
     api_key = extract_api_key(request)
-    allowed_keys = settings.configured_api_keys
+    allowed_key = settings.configured_api_key
 
-    if not allowed_keys:
+    if not allowed_key:
         return client_label(request, api_key)
 
     if not api_key:
@@ -206,7 +209,7 @@ def authenticate_request(request: Request) -> str:
             },
         )
 
-    if not any(secrets.compare_digest(api_key, key) for key in allowed_keys):
+    if not secrets.compare_digest(api_key, allowed_key):
         raise HTTPException(
             status_code=401,
             detail={
