@@ -13,6 +13,8 @@ GET  /                    Service metadata
 GET  /health              DSRI health/readiness endpoint
 GET  /ready               Gateway readiness endpoint
 GET  /gpu-status          GPU/vLLM backend availability
+GET  /usage               Gateway usage and rate-limit counters
+GET  /monitoring/dashboard Dashboard-friendly usage payload
 GET  /v1/models           Local unavailable model metadata, or proxy to backend
 POST /v1/chat/completions Proxy to backend, or 503 if no backend is configured
 ```
@@ -26,9 +28,17 @@ HOST=0.0.0.0
 PORT=8000
 SERVICE_VERSION=fastapi-gateway-v1
 LLM_BACKEND_URL=
+LLM_BACKEND_API_KEY=
 LLM_MODEL=Qwen/Qwen2.5-32B-Instruct-AWQ
 LLM_REQUEST_TIMEOUT_SECONDS=180
 LLM_STATUS_TIMEOUT_SECONDS=2.0
+API_KEYS=
+RATE_LIMIT_REQUESTS_PER_MINUTE=30
+RATE_LIMIT_WINDOW_SECONDS=60
+MAX_REQUEST_BODY_BYTES=1000000
+MAX_MESSAGES_PER_REQUEST=50
+MAX_PROMPT_CHARS=20000
+MAX_COMPLETION_TOKENS=2048
 ```
 
 When GPU time is booked and a separate vLLM service is running, set:
@@ -39,6 +49,59 @@ LLM_MODEL=Qwen/Qwen2.5-32B-Instruct-AWQ
 ```
 
 DataSight should keep calling the stable DSRI gateway route. If the GPU backend is unavailable, the gateway remains up and returns `503`.
+
+## API Keys and Limits
+
+Set `API_KEYS` to a comma-separated list to protect expensive and monitoring endpoints:
+
+```text
+API_KEYS=<secret-1>,<secret-2>
+```
+
+When `API_KEYS` is set, clients must send one of:
+
+```text
+Authorization: Bearer <secret>
+X-API-Key: <secret>
+?api_key=<secret>
+```
+
+The `api_key` query argument is supported for simple tools, but headers are safer because URLs can appear in logs and browser history.
+
+Protected routes:
+
+```text
+GET  /usage
+GET  /monitoring/dashboard
+GET  /v1/models
+POST /v1/chat/completions
+```
+
+Public low-cost routes:
+
+```text
+GET /
+GET /health
+GET /ready
+GET /gpu-status
+```
+
+Rate limits and request caps are enforced in the gateway before proxying to vLLM:
+
+```text
+RATE_LIMIT_REQUESTS_PER_MINUTE=30
+RATE_LIMIT_WINDOW_SECONDS=60
+MAX_REQUEST_BODY_BYTES=1000000
+MAX_MESSAGES_PER_REQUEST=50
+MAX_PROMPT_CHARS=20000
+MAX_COMPLETION_TOKENS=2048
+```
+
+The gateway strips incoming `Authorization` and `X-API-Key` headers before proxying to the backend. If the internal vLLM backend also requires an API key, set:
+
+```text
+LLM_BACKEND_API_KEY=<backend-secret>
+```
 
 ## Local Development
 
@@ -87,6 +150,27 @@ Expected response includes:
 }
 ```
 
+Usage dashboard payload:
+
+```bash
+curl http://127.0.0.1:18000/monitoring/dashboard \
+  -H "X-API-Key: <secret>"
+```
+
+Expected response includes:
+
+```json
+{
+  "status": "ok",
+  "auth_required": true,
+  "limits": {
+    "rate_limit_requests_per_minute": 30,
+    "max_completion_tokens": 2048
+  },
+  "totals": {}
+}
+```
+
 Chat without a backend:
 
 ```bash
@@ -120,6 +204,12 @@ Initial delay: 10-30s
 Timeout: 10s
 Period: 10s
 Failure threshold: 6
+```
+
+Do not enable GPU resources on this deployment. The `datasight-llm-server` pod must not contain:
+
+```yaml
+nvidia.com/gpu: "1"
 ```
 
 Use port `8000` everywhere. Do not call the external route with `:8000`; the route is HTTPS externally and forwards internally to the service target port.
@@ -181,97 +271,31 @@ Route -> /health returns the current version
 
 If the webhook does not fire, manually start a build from the DSRI Builds page and then inspect the GitHub webhook delivery log.
 
-## GPU/vLLM Follow-Up
+## GPU Backend Contract
 
-Keep this CPU gateway separate from the GPU model runtime.
+The GPU runtime belongs in a separate repository and DSRI application named `datasight-vllm-gpu`.
 
-This repo includes optional GPU backend artifacts:
-
-```text
-gpu/Dockerfile                 Separate vLLM image for GPU deployment only
-gpu/entrypoint-vllm.sh         Starts vLLM with a configurable model
-dsri/vllm-gpu-pvc.yaml         Reference PVC for persistent Hugging Face cache
-dsri/vllm-gpu-deployment.yaml  Reference GPU deployment with /hf-cache mount
-dsri/vllm-gpu-service.yaml     Internal service used by the CPU gateway
-```
-
-The root `Dockerfile` remains the always-on CPU gateway. It should not request `nvidia.com/gpu`, import CUDA libraries, load models, or run vLLM. The GPU backend uses `gpu/Dockerfile` and should be deployed only when DSRI GPU booking/resources are available, so vLLM, PyTorch, CUDA, and model downloads are not added to the always-on gateway image.
-
-### Persistent Model Cache
-
-Create a DSRI Persistent Volume Claim before deploying the GPU backend:
+This repository intentionally does not include a vLLM Dockerfile, CUDA runtime, GPU deployment manifest, or `nvidia.com/gpu` resource request. Its only GPU responsibility is to proxy to the internal backend URL when configured:
 
 ```text
-PVC name: pvc-datasight-hf-cache
-Storage class: ocs-storagecluster-cephfs
-Access mode: RWX if available, otherwise RWO
-Size: 150-250Gi to start
-Mount path: /hf-cache
+LLM_BACKEND_URL=http://datasight-vllm-gpu:8000
 ```
 
-DSRI storage notes:
+Operational split:
 
 ```text
-Ephemeral pod storage is lost when the pod is restarted or deleted.
-Persistent storage can be reused across pod restarts.
-DSRI persistent storage is not automatically backed up.
-Use the DSRI web UI Add Storage action to mount an existing PVC into an application.
+datasight-llm-server
+  CPU-only public gateway
+  Route enabled
+  Always safe to keep running
+  No GPU resource request
+
+datasight-vllm-gpu
+  Separate internal GPU backend
+  Route disabled
+  Service name datasight-vllm-gpu
+  Scaled to 0 by default
+  Scaled to 1 only during booked GPU windows
 ```
 
-The GPU backend maps Hugging Face cache paths to the PVC:
-
-```text
-HF_HOME=/hf-cache
-HUGGINGFACE_HUB_CACHE=/hf-cache/hub
-TRANSFORMERS_CACHE=/hf-cache/transformers
-VLLM_MODEL=Qwen/Qwen2.5-32B-Instruct-AWQ
-SERVED_MODEL_NAME=Qwen/Qwen2.5-32B-Instruct-AWQ
-```
-
-On the first startup for a model, vLLM/Hugging Face downloads model files into `/hf-cache`. On later restarts with the same PVC mounted, the backend should reuse that cache instead of downloading from scratch.
-
-### Deploying the GPU Backend
-
-When DSRI GPU time is booked:
-
-```text
-1. Create or confirm the PVC pvc-datasight-hf-cache exists.
-2. Create a second DSRI application/build from this repo using Dockerfile path gpu/Dockerfile.
-3. Name the GPU application/service datasight-vllm-gpu.
-4. Mount pvc-datasight-hf-cache into the GPU app at /hf-cache.
-5. Enable one GPU only on the GPU backend deployment, not on the CPU gateway.
-6. Expose the GPU backend as an internal Service on port 8000.
-7. Do not create a public Route for the GPU backend unless you need direct debugging access.
-8. Set the CPU gateway env var LLM_BACKEND_URL=http://datasight-vllm-gpu:8000.
-9. Keep DataSight pointed at the stable CPU gateway route.
-```
-
-DSRI GPU notes:
-
-```text
-GPU access is reservation-based.
-Enabling GPU resources restarts the pod.
-Keep replica count at 1 while debugging.
-Only the GPU backend deployment should request nvidia.com/gpu: 1.
-```
-
-The reference manifests in `dsri/` show the intended PVC mount, service name, model env vars, and GPU resource request. Replace `<project>` in `dsri/vllm-gpu-deployment.yaml` with your DSRI/OpenShift project name if you apply it directly.
-
-### Switching Models Later
-
-To switch models, update the GPU backend environment:
-
-```text
-VLLM_MODEL=<new-model-id>
-SERVED_MODEL_NAME=<new-model-id>
-```
-
-Then update the CPU gateway metadata:
-
-```text
-LLM_MODEL=<new-model-id>
-```
-
-No code change or rebuild is required for an env-only model switch. Use a DSRI/OpenShift rollout/restart so the GPU backend starts vLLM with the new model. If the new model is not already present in `/hf-cache`, it downloads once into the mounted PVC.
-
-This architecture avoids CPU pods trying to run the model and keeps `/health` available even when GPU scheduling is unavailable.
+A detailed implementation scope for the separate GPU repository is in [`docs/datasight-vllm-gpu-scope.md`](docs/datasight-vllm-gpu-scope.md).
