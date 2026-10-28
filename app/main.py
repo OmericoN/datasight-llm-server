@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     service_version: str = "fastapi-gateway-v1"
     llm_backend_url: str = ""
     llm_backend_api_key: str = ""
-    llm_model: str = "Qwen/Qwen2.5-32B-Instruct-AWQ"
+    llm_model: str = "Qwen/Qwen3.8-27B"
     llm_request_timeout_seconds: float = Field(default=180, gt=0)
     llm_status_timeout_seconds: float = Field(default=2.0, gt=0)
     api_key: str = ""

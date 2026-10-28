@@ -1,3 +1,8 @@
+> Historical implementation proposal. The current GPU deployment, pinned model,
+> and validated manifests are maintained in
+> [datasight-vllm-inference](https://github.com/OmericoN/datasight-vllm-inference).
+> Use that repository rather than deploying the older examples below.
+
 # datasight-vllm-gpu Implementation Scope
 
 ## Goal

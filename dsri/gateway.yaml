@@ -1,0 +1,136 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: datasight-llm-server
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: datasight-llm-server
+spec:
+  runPolicy: Serial
+  source:
+    type: Binary
+    binary: {}
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: datasight-llm-server:cpu-gateway-v1
+  resources:
+    requests:
+      cpu: "1"
+      memory: 1Gi
+      ephemeral-storage: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+      ephemeral-storage: 4Gi
+  triggers: []
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: datasight-llm-server
+  labels:
+    app: datasight-llm-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: datasight-llm-server
+  template:
+    metadata:
+      labels:
+        app: datasight-llm-server
+    spec:
+      serviceAccountName: default
+      automountServiceAccountToken: false
+      containers:
+        - name: gateway
+          image: image-registry.openshift-image-registry.svc:5000/ub-ub-datasight/datasight-llm-server:cpu-gateway-v1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: HOST
+              value: 0.0.0.0
+            - name: PORT
+              value: "8000"
+            - name: LLM_BACKEND_URL
+              value: http://datasight-vllm-gpu:8000
+            - name: LLM_MODEL
+              value: Qwen/Qwen3.8-27B
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: datasight-llm-server-api
+                  key: API_KEY
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 24
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 2
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+              ephemeral-storage: 64Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+              ephemeral-storage: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: datasight-llm-server
+spec:
+  selector:
+    app: datasight-llm-server
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: datasight-llm-server
+  annotations:
+    haproxy.router.openshift.io/timeout: 200s
+spec:
+  to:
+    kind: Service
+    name: datasight-llm-server
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
