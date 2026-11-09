@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     rate_limit_window_seconds: int = Field(default=60, gt=0)
     max_request_body_bytes: int = Field(default=1_000_000, gt=0)
     max_messages_per_request: int = Field(default=50, gt=0)
-    max_prompt_chars: int = Field(default=20_000, gt=0)
+    max_prompt_chars: int = Field(default=40_000, gt=0)
     max_completion_tokens: int = Field(default=2_048, gt=0)
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

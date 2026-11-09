@@ -22,6 +22,7 @@ class GatewayWithoutBackendTests(unittest.TestCase):
             "RATE_LIMIT_REQUESTS_PER_MINUTE",
             "RATE_LIMIT_WINDOW_SECONDS",
             "MAX_COMPLETION_TOKENS",
+            "MAX_PROMPT_CHARS",
         ):
             os.environ.pop(key, None)
         os.environ.update(env)
@@ -82,6 +83,11 @@ class GatewayWithoutBackendTests(unittest.TestCase):
             "llm_backend_unavailable",
         )
         self.assertIn("booked DSRI GPU slot", body["detail"]["error"]["message"])
+
+    def test_default_prompt_cap_is_40000_chars(self) -> None:
+        self.assertEqual(self.gateway.settings.max_prompt_chars, 40_000)
+        self.assertLess(self.gateway.prompt_char_count([{"content": "x" * 30_000}]), self.gateway.settings.max_prompt_chars)
+        self.assertGreater(self.gateway.prompt_char_count([{"content": "x" * 40_001}]), self.gateway.settings.max_prompt_chars)
 
     def test_chat_requires_api_key_when_configured(self) -> None:
         self.reload_gateway(API_KEY="secret-key")
